@@ -1,5 +1,5 @@
-import { ProfileRepository } from 'src/profiles/domain/repositories/profile.repository.interface';
-import { Profile } from 'src/profiles/domain/models/profile.model';
+import { ProfileRepository } from '../../src/profiles/domain/repositories/profile.repository.interface';
+import { Profile } from '../../src/profiles/domain/models/profile.model';
 
 export class MockProfileRepository implements ProfileRepository {
   private profiles: Profile[] = [];

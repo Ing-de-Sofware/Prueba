@@ -36,13 +36,25 @@ export class SupabaseStorageRepository implements StorageRepository {
       }
     }
   }
-
   async uploadFile(
     bucketName: string,
     filePath: string,
     file: Buffer,
     contentType: string
   ): Promise<StorageFile> {
+    // Validar que el buffer existe y no está vacío
+    if (!file) {
+      throw new Error('Buffer de archivo no proporcionado');
+    }
+    
+    if (!Buffer.isBuffer(file)) {
+      throw new Error('El parámetro file debe ser un Buffer');
+    }
+    
+    if (file.length === 0) {
+      throw new Error('El buffer del archivo está vacío');
+    }
+
     const { data, error } = await this.supabase.storage
       .from(bucketName)
       .upload(filePath, file, {
@@ -65,7 +77,7 @@ export class SupabaseStorageRepository implements StorageRepository {
     return new StorageFile({
       path: filePath,
       url: urlData.publicUrl,
-      size: file.length,
+      size: file.length, // Ahora sabemos que file existe y es un Buffer
       mimeType: contentType,
       name: fileName,
       bucket: bucketName,

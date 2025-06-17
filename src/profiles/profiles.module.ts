@@ -4,7 +4,7 @@ import { ProfileController } from './interfaces/controllers/profile.controller';
 import { ProfileService } from './application/services/profile.service';
 import { SupabaseProfileRepository } from './infrastructure/repositories/supabase-profile.repository';
 import { AuthModule } from '../auth/auth.module';
-import { AuthService } from 'src/auth/auth.service';
+import { AuthService } from '../auth/auth.service';
 
 export const PROFILE_REPOSITORY = 'PROFILE_REPOSITORY';
 

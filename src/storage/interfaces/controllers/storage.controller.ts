@@ -20,11 +20,9 @@ import { ApiTags, ApiConsumes, ApiOperation, ApiResponse, ApiParam } from '@nest
 import { AvatarService } from '../../application/services/avatar.service';
 import { StorageFile } from '../../domain/models/storage-file.model';
 import { UploadFileDto } from '../../dto/upload-file.dto';
-import { diskStorage } from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
 import { TutoringImageService } from 'src/storage/application/services/tutoringImage.service';
 import { UploadTutoringImageDto } from 'src/storage/dto/upload-tutoringImage.dto';
+import { memoryStorage } from 'multer';
 
 @ApiTags('storage')
 @Controller('storage')
@@ -34,24 +32,13 @@ export class StorageController {
   constructor(private readonly avatarService: AvatarService,
     private readonly tutoringImageService: TutoringImageService
   ) {
-  }
-
-  @Post('avatars')
+  }  @Post('avatars')
   @ApiOperation({ summary: 'Subir un avatar para un usuario' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Avatar subido con éxito', type: StorageFile })
   @UseInterceptors(
     FileInterceptor('file', {
-      // Configuración básica de Multer
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          cb(null, path.join(process.cwd(), 'tmp', 'avatar-profile'));
-        },
-        filename: (req, file, cb) => {
-          const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-          cb(null, uniqueName);
-        }
-      }),
+      storage: memoryStorage(),
       limits: {
         fileSize: 5 * 1024 * 1024 // 5MB
       },
@@ -70,8 +57,7 @@ export class StorageController {
     @UploadedFile() file: Express.Multer.File,
     @Body() uploadFileDto: UploadFileDto
   ): Promise<StorageFile> {
-    try {
-      // Log detallado para depuración
+    try {      
       this.logger.log(`Solicitud para subir avatar recibida:`);
       this.logger.log(`UserId: ${uploadFileDto.userId}`);
       this.logger.log(`Archivo: ${JSON.stringify({
@@ -79,7 +65,8 @@ export class StorageController {
         originalname: file?.originalname,
         size: file?.size,
         mimetype: file?.mimetype,
-        path: file?.path
+        hasBuffer: !!file?.buffer,
+        bufferLength: file?.buffer?.length
       })}`);
 
       if (!file) {
@@ -87,46 +74,27 @@ export class StorageController {
         throw new BadRequestException('No se recibió ningún archivo');
       }
 
+      if (!file.buffer) {
+        this.logger.error('Buffer del archivo no disponible');
+        throw new BadRequestException('El archivo no contiene datos válidos');
+      }
+
       if (!uploadFileDto.userId) {
         this.logger.error('UserId no proporcionado');
         throw new BadRequestException('Se requiere un ID de usuario');
       }
 
-      // Leer el archivo para pasarlo al servicio
-      const fileBuffer = fs.readFileSync(file.path);
-
-      // Subir el archivo al bucket de Supabase
+      // Subir el archivo directamente al bucket de Supabase usando el buffer
       const result = await this.avatarService.uploadAvatar(
         uploadFileDto.userId,
-        {
-          buffer: fileBuffer,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size
-        } as Express.Multer.File,
+        file,
         uploadFileDto.fileName
       );
-
-      // Eliminar el archivo temporal
-      try {
-        fs.unlinkSync(file.path);
-      } catch (err) {
-        this.logger.error(`Error eliminando archivo temporal: ${err.message}`);
-      }
 
       this.logger.log(`Avatar subido con éxito. URL: ${result.url}`);
       return result;
     } catch (error) {
       this.logger.error(`Error al subir avatar: ${error.message}`, error.stack);
-
-      // Si hay un archivo temporal, intentar eliminarlo
-      if (file?.path) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          this.logger.error(`Error eliminando archivo temporal: ${err.message}`);
-        }
-      }
 
       if (error instanceof HttpException) {
         throw error;
@@ -161,8 +129,6 @@ export class StorageController {
     const result = await this.avatarService.deleteAvatar(userId, fileName);
     return { success: result };
   }
-
-
   //Tutoring Image
   @Post('tutoring-images')
   @ApiOperation({ summary: 'Subir una imagen de tutoría' })
@@ -170,16 +136,7 @@ export class StorageController {
   @ApiResponse({ status: 201, description: 'Imagen subida con éxito', type: StorageFile })
   @UseInterceptors(
     FileInterceptor('file', {
-      // Configuración básica de Multer
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          cb(null, path.join(process.cwd(), 'tmp', 'avatar-profile'));
-        },
-        filename: (req, file, cb) => {
-          const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-          cb(null, uniqueName);
-        }
-      }),
+      storage: memoryStorage(),
       limits: {
         fileSize: 5 * 1024 * 1024 // 5MB
       },
@@ -198,16 +155,16 @@ export class StorageController {
     @UploadedFile() file: Express.Multer.File,
     @Body() uploadTutoringImage: UploadTutoringImageDto
   ): Promise<StorageFile> {
-    try {
-      // Log detallado para depuración
-      this.logger.log(`Solicitud para subir avatar recibida:`);
-      this.logger.log(`UserId: ${uploadTutoringImage.tutoringId}`);
+    try {      // Log detallado para depuración
+      this.logger.log(`Solicitud para subir imagen de tutoría recibida:`);
+      this.logger.log(`TutoringId: ${uploadTutoringImage.tutoringId}`);
       this.logger.log(`Archivo: ${JSON.stringify({
         fieldname: file?.fieldname,
         originalname: file?.originalname,
         size: file?.size,
         mimetype: file?.mimetype,
-        path: file?.path
+        hasBuffer: !!file?.buffer,
+        bufferLength: file?.buffer?.length
       })}`);
 
       if (!file) {
@@ -215,52 +172,33 @@ export class StorageController {
         throw new BadRequestException('No se recibió ningún archivo');
       }
 
-      if (!uploadTutoringImage.tutoringId) {
-        this.logger.error('UserId no proporcionado');
-        throw new BadRequestException('Se requiere un ID de usuario');
+      if (!file.buffer) {
+        this.logger.error('Buffer del archivo no disponible');
+        throw new BadRequestException('El archivo no contiene datos válidos');
       }
 
-      // Leer el archivo para pasarlo al servicio
-      const fileBuffer = fs.readFileSync(file.path);
+      if (!uploadTutoringImage.tutoringId) {
+        this.logger.error('TutoringId no proporcionado');
+        throw new BadRequestException('Se requiere un ID de tutoría');
+      }
 
-      // Subir el archivo al bucket de Supabase
+      // Subir el archivo directamente al bucket de Supabase usando el buffer
       const result = await this.tutoringImageService.uploadTutoringImage(
         uploadTutoringImage.tutoringId,
-        {
-          buffer: fileBuffer,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size
-        } as Express.Multer.File,
+        file,
         uploadTutoringImage.fileName
       );
 
-      // Eliminar el archivo temporal
-      try {
-        fs.unlinkSync(file.path);
-      } catch (err) {
-        this.logger.error(`Error eliminando archivo temporal: ${err.message}`);
-      }
-
-      this.logger.log(`Avatar subido con éxito. URL: ${result.url}`);
+      this.logger.log(`Imagen de tutoría subida con éxito. URL: ${result.url}`);
       return result;
     } catch (error) {
-      this.logger.error(`Error al subir avatar: ${error.message}`, error.stack);
-
-      // Si hay un archivo temporal, intentar eliminarlo
-      if (file?.path) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          this.logger.error(`Error eliminando archivo temporal: ${err.message}`);
-        }
-      }
+      this.logger.error(`Error al subir imagen de tutoría: ${error.message}`, error.stack);
 
       if (error instanceof HttpException) {
         throw error;
       }
 
-      throw new BadRequestException(`Error al procesar el avatar: ${error.message}`);
+      throw new BadRequestException(`Error al procesar la imagen de tutoría: ${error.message}`);
     }
   }
 
